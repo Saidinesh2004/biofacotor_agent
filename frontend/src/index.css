@@ -1,0 +1,87 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%; /* #020617 */
+    --foreground: 210 40% 98%;
+    
+    --card: 222.2 47.4% 11.2%; /* #0F172A */
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 142.1 76.2% 36.3%; /* #16A34A */
+    --primary-foreground: 210 40% 98%;
+    
+    --secondary: 222.2 47.4% 11.2%; /* #0F172A */
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    
+    --accent: 142.1 70.6% 45.3%; /* #22C55E */
+    --accent-foreground: 222.2 47.4% 11.2%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Approximation of rgba(255,255,255,0.08) on dark background */
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 142.1 76.2% 36.3%;
+    
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom utilities for glassmorphism and modern UI */
+@layer utilities {
+  .glass {
+    background-color: rgb(15 23 42 / 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+  .glass-card {
+    background-color: rgb(15 23 42 / 0.6);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+  .text-gradient {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    background-image: linear-gradient(to right, #4ade80, #16a34a);
+  }
+  .hover-glow {
+    transition: all 0.3s;
+  }
+  .hover-glow:hover {
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

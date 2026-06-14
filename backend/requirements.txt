@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+pg8000
+pydantic
+python-dotenv
+pydantic-settings
+twilio
+python-multipart
+pandas
+openpyxl
