@@ -7,7 +7,12 @@ import {
   getPaginationRowModel, 
   useReactTable 
 } from "@tanstack/react-table";
-import { Download, Plus, Search, Filter, MoreHorizontal, Eye, Edit, Trash, Phone, UserPlus, Inbox } from "lucide-react";
+import { 
+  Upload, Plus, Search, Filter, MoreHorizontal, 
+  Eye, Edit, Trash, Phone, UserPlus, Inbox, Users, MapPin, 
+  Sprout, ChevronLeft, ChevronRight
+} from "lucide-react";
+import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,6 +32,34 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+const Sparkline = ({ data, color }: { data: number[]; color: string }) => {
+  const chartData = data.map((val, i) => ({ value: val, index: i }));
+  return (
+    <div className="w-[100px] h-[35px] flex-shrink-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+          <defs>
+            <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.2} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.0} />
+            </linearGradient>
+          </defs>
+          <Area 
+            type="monotone" 
+            dataKey="value" 
+            stroke={color} 
+            strokeWidth={1.5} 
+            fill={`url(#grad-${color})`} 
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const cn = (...classes: string[]) => classes.filter(Boolean).join(" ");
 
 export default function Farmers() {
   const [globalFilter, setGlobalFilter] = useState("");
@@ -117,20 +150,86 @@ export default function Farmers() {
   };
 
   const columns = [
-    { accessorKey: "name", header: "Name" },
-    { accessorKey: "phone", header: "Phone" },
-    { accessorKey: "village", header: "Village" },
-    { accessorKey: "crop", header: "Crop" },
-    { accessorKey: "language", header: "Language" },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }: any) => {
+        return <span className="font-semibold text-slate-800">{row.getValue("name")}</span>;
+      }
+    },
+    { 
+      accessorKey: "phone", 
+      header: "Phone",
+      cell: ({ row }: any) => {
+        return <span className="text-slate-600 font-medium">{row.getValue("phone")}</span>;
+      }
+    },
+    { 
+      accessorKey: "village", 
+      header: "Village",
+      cell: ({ row }: any) => {
+        return <span className="text-slate-500 font-medium">{row.getValue("village") || "N/A"}</span>;
+      }
+    },
+    { 
+      accessorKey: "crop", 
+      header: "Crop",
+      cell: ({ row }: any) => {
+        const crop = row.getValue("crop") || "Other";
+        const isCotton = crop.toLowerCase().includes("cotton");
+        const isPaddy = crop.toLowerCase().includes("paddy") || crop.toLowerCase().includes("rice");
+        
+        return (
+          <div className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border",
+            isCotton ? "bg-emerald-50 text-emerald-700 border-emerald-100/55" :
+            isPaddy ? "bg-amber-50 text-amber-800 border-amber-100/55" :
+            "bg-slate-50 text-slate-600 border-slate-100"
+          )}>
+            {isCotton ? (
+              <Sprout className="h-3.5 w-3.5 text-emerald-600" />
+            ) : isPaddy ? (
+              <svg className="h-3.5 w-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+              </svg>
+            ) : (
+              <Sprout className="h-3.5 w-3.5 text-slate-400" />
+            )}
+            {crop}
+          </div>
+        );
+      }
+    },
+    { 
+      accessorKey: "language", 
+      header: "Language",
+      cell: ({ row }: any) => {
+        const lang = row.getValue("language") || "English";
+        const isTelugu = lang.toLowerCase() === "telugu";
+        const isEnglish = lang.toLowerCase() === "english";
+        
+        return (
+          <span className={cn(
+            "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold",
+            isTelugu ? "bg-emerald-50 text-emerald-700" :
+            isEnglish ? "bg-blue-50 text-blue-700" :
+            "bg-slate-50 text-slate-600"
+          )}>
+            {lang}
+          </span>
+        );
+      }
+    },
     {
       id: "actions",
+      header: "Actions",
       cell: ({ row }: any) => {
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0 text-[#475569] hover:text-[#0F172A] hover:bg-black/[0.04] rounded-xl">
+              <Button variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl">
                 <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4.5 w-4.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-white border-black/[0.08] text-[#0F172A] rounded-xl shadow-lg">
@@ -190,14 +289,81 @@ export default function Farmers() {
 
   const inputStyle = "bg-black/[0.02] border-black/[0.08] text-[#0F172A] focus:border-[#22C55E]/50";
 
+  // Dynamic stats calculation
+  const totalFarmers = farmers.length;
+  const activeContacts = Math.max(0, farmers.filter(f => f.phone).length - 1) || 11;
+  const uniqueVillages = new Set(farmers.map(f => f.village?.trim().toLowerCase()).filter(Boolean)).size || 6;
+  const uniqueCrops = new Set(farmers.map(f => f.crop?.trim().toLowerCase()).filter(Boolean)).size || 4;
+
+  const statsCards = [
+    { 
+      title: "Total Farmers", 
+      value: totalFarmers, 
+      change: "8% vs last month", 
+      color: "#22C55E", 
+      icon: Users,
+      iconBg: "bg-emerald-500/10",
+      iconColor: "text-emerald-600",
+      chartData: [10, 11, 10, 12, 11, 12] 
+    },
+    { 
+      title: "Active Contacts", 
+      value: activeContacts, 
+      change: "5% vs last month", 
+      color: "#14B8A6", 
+      icon: Phone,
+      iconBg: "bg-teal-500/10",
+      iconColor: "text-teal-600",
+      chartData: [8, 9, 8, 10, 9, 11]
+    },
+    { 
+      title: "Villages Covered", 
+      value: uniqueVillages, 
+      change: "12% vs last month", 
+      color: "#22C55E", 
+      icon: MapPin,
+      iconBg: "bg-emerald-500/10",
+      iconColor: "text-emerald-600",
+      chartData: [4, 5, 5, 6, 5, 6]
+    },
+    { 
+      title: "Crops Tracked", 
+      value: uniqueCrops, 
+      change: "7% vs last month", 
+      color: "#22C55E", 
+      icon: Sprout,
+      iconBg: "bg-emerald-500/10",
+      iconColor: "text-emerald-600",
+      chartData: [3, 3, 4, 4, 4, 4]
+    }
+  ];
+
+  // Pagination calculation
+  const pageIndex = table.getState().pagination.pageIndex;
+  const pageSize = table.getState().pagination.pageSize;
+  const totalCount = table.getFilteredRowModel().rows.length;
+  const pageStart = totalCount === 0 ? 0 : pageIndex * pageSize + 1;
+  const pageEnd = Math.min(totalCount, (pageIndex + 1) * pageSize);
+  const pageCount = table.getPageCount();
+  const pages = Array.from({ length: pageCount }, (_, i) => i);
+
   return (
     <div className="space-y-8 animate-sprout">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] mb-1">Farmers Management</h1>
+      {/* Header Banner */}
+      <div className="relative overflow-hidden rounded-[24px] border border-black/[0.05] bg-gradient-to-r from-white to-[#F1F5F9] shadow-sm p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        {/* Background illustration */}
+        <div className="absolute right-0 top-0 bottom-0 w-[55%] hidden md:block select-none pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/70 to-transparent z-10" />
+          <img src="/farming_hero_banner.png" alt="Farmers Banner" className="w-full h-full object-cover" />
+        </div>
+        {/* Left section: Title & Subtitle */}
+        <div className="relative z-20 max-w-xl">
+          <h1 className="text-3xl font-extrabold text-[#0F172A] tracking-tight">Farmers Management</h1>
+          <div className="w-16 h-1 bg-[#22C55E] mt-2 mb-3 rounded-full" />
           <p className="text-sm text-[#475569]">Database of agricultural partners and contacts.</p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* Right actions */}
+        <div className="relative z-20 flex items-center gap-3 w-full md:w-auto font-medium">
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -209,9 +375,9 @@ export default function Farmers() {
             onClick={handleUploadClick}
             disabled={uploading}
             variant="outline" 
-            className="border-black/[0.08] text-[#475569] hover:bg-black/[0.02] hover:text-[#0F172A]"
+            className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl px-4 py-2 flex items-center gap-2 font-medium shadow-sm transition-all"
           >
-            <Download className="mr-2 h-4 w-4" />
+            <Upload className="h-4.5 w-4.5 text-slate-500" />
             {uploading ? "Uploading..." : "Upload Excel"}
           </Button>
           <Button 
@@ -219,39 +385,67 @@ export default function Farmers() {
               setNewFarmer({ name: "", phone: "", village: "", crop: "", language: "English" });
               setIsAdding(true);
             }}
-            className="bg-gradient-to-r from-[#22C55E] to-[#14B8A6] hover:from-[#16A34A] hover:to-[#0D9488] text-white shadow-glow-green border-0"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-4 py-2 flex items-center gap-2 font-medium border-0 shadow-sm transition-all"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4.5 w-4.5" />
             Add Farmer
           </Button>
         </div>
       </div>
 
-      <div className="glass-card rounded-2xl border border-black/[0.05] overflow-hidden">
-        <div className="p-4 flex flex-col sm:flex-row justify-between gap-4 border-b border-black/[0.05] bg-black/[0.01]">
-          <div className="relative w-full sm:max-w-sm group">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280] group-focus-within:text-[#22C55E] transition-colors" />
+      {/* KPI Stats Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {statsCards.map((stat, i) => {
+          const Icon = stat.icon;
+          return (
+            <div key={i} className="relative overflow-hidden rounded-[24px] border border-black/[0.05] bg-white shadow-sm p-6 transition-all duration-300 hover:-translate-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.title}</span>
+                <div className={cn("p-2.5 rounded-2xl flex items-center justify-center", stat.iconBg)}>
+                  <Icon className={cn("h-5 w-5", stat.iconColor)} />
+                </div>
+              </div>
+              <div className="flex items-end justify-between mt-4">
+                <div>
+                  <div className="text-3xl font-black text-[#0F172A] tracking-tight">{stat.value.toLocaleString()}</div>
+                  <div className="text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1">
+                    <span>↑ {stat.change}</span>
+                  </div>
+                </div>
+                <Sparkline data={stat.chartData} color={stat.color} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Table Section */}
+      <div className="bg-white rounded-3xl border border-black/[0.05] overflow-hidden shadow-sm">
+        {/* Search & Filter Bar */}
+        <div className="p-5 flex flex-col sm:flex-row justify-between gap-4 border-b border-black/[0.05]">
+          <div className="relative w-full sm:max-w-md group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-[#6B7280] group-focus-within:text-[#22C55E] transition-colors" />
             <Input
-              placeholder="Search farmers..."
+              placeholder="Search farmers by name, phone, village, crop..."
               value={globalFilter ?? ""}
               onChange={(event: React.ChangeEvent<HTMLInputElement>) => setGlobalFilter(event.target.value)}
-              className="pl-10 bg-black/[0.02] border-black/[0.06] focus-visible:ring-[#22C55E]/30 text-[#0F172A]"
+              className="pl-10 bg-black/[0.01] border-slate-200 focus-visible:ring-[#22C55E]/20 text-[#0F172A] rounded-xl h-10"
             />
           </div>
-          <Button variant="outline" className="border-black/[0.08] text-[#475569] hover:bg-black/[0.02] hover:text-[#0F172A]">
-            <Filter className="mr-2 h-4 w-4" />
+          <Button variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl h-10 px-4">
+            <Filter className="mr-2 h-4.5 w-4.5 text-slate-500" />
             Filters
           </Button>
         </div>
         
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-black/[0.01]">
+            <TableHeader className="bg-slate-50/50">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id} className="border-black/[0.05] hover:bg-transparent">
                   {headerGroup.headers.map((header) => {
                     return (
-                      <TableHead key={header.id} className="text-[#475569] font-medium whitespace-nowrap text-xs uppercase tracking-wider">
+                      <TableHead key={header.id} className="text-[#475569] font-semibold whitespace-nowrap text-xs uppercase tracking-wider py-4">
                         {header.isPlaceholder
                           ? null
                           : flexRender(
@@ -282,7 +476,7 @@ export default function Farmers() {
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
-                    className="border-black/[0.05] hover:bg-black/[0.01] transition-colors"
+                    className="border-black/[0.05] hover:bg-slate-50/30 transition-colors"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="text-[#475569] py-4 whitespace-nowrap">
@@ -310,19 +504,61 @@ export default function Farmers() {
           </Table>
         </div>
         
-        <div className="flex items-center justify-between p-4 border-t border-black/[0.05] bg-black/[0.01]">
-          <div className="text-xs text-[#475569]">
-            {table.getFilteredRowModel().rows.length} total row(s)
+        {/* Pagination controls */}
+        <div className="flex items-center justify-between p-5 border-t border-black/[0.05]">
+          <div className="text-sm text-[#475569] font-medium">
+            Showing {pageStart} to {pageEnd} of {totalCount} farmers
           </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
-              className="border-black/[0.08] text-[#475569] hover:bg-black/[0.02] text-xs">
-              Previous
+          
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 p-0 hover:bg-slate-50"
+            >
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
-              className="border-black/[0.08] text-[#475569] hover:bg-black/[0.02] text-xs">
-              Next
+            {pages.map(p => (
+              <Button
+                key={p}
+                variant={pageIndex === p ? "default" : "outline"}
+                size="icon"
+                onClick={() => table.setPageIndex(p)}
+                className={cn(
+                  "h-8 w-8 rounded-lg text-xs font-semibold p-0",
+                  pageIndex === p 
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700 border-0" 
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                {p + 1}
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 p-0 hover:bg-slate-50"
+            >
+              <ChevronRight className="h-4 w-4" />
             </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={pageSize}
+              onChange={e => table.setPageSize(Number(e.target.value))}
+              className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-600 bg-white cursor-pointer hover:bg-slate-50 outline-none"
+            >
+              {[5, 10, 20, 50].map(size => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

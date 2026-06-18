@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, Play, Calendar, Users, Activity, Search, RefreshCw, Trash2, Rocket, Upload, Download, CheckCircle2, AlertCircle } from "lucide-react";
+import { 
+  Plus, Play, Calendar, Users, Activity, Search, RefreshCw, 
+  Trash2, Rocket, Upload, Download, CheckCircle2, AlertCircle,
+  Clock, XCircle, Megaphone, MoreHorizontal, Phone, Check, Filter
+} from "lucide-react";
+import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import * as XLSX from "xlsx";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -12,16 +17,98 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import api from "@/lib/api";
+
+const Sparkline = ({ data, color }: { data: number[]; color: string }) => {
+  const chartData = data.map((val, i) => ({ value: val, index: i }));
+  return (
+    <div className="w-[100px] h-[35px] flex-shrink-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+          <defs>
+            <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.2} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.0} />
+            </linearGradient>
+          </defs>
+          <Area 
+            type="monotone" 
+            dataKey="value" 
+            stroke={color} 
+            strokeWidth={1.5} 
+            fill={`url(#grad-${color})`} 
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const cn = (...classes: string[]) => classes.filter(Boolean).join(" ");
+
+const getCampaignIllustration = (name: string, desc: string) => {
+  const combined = `${name} ${desc || ""}`.toLowerCase();
+  if (combined.includes("cotton")) {
+    return (
+      <div className="w-20 h-20 rounded-full bg-[#ECFDF5] flex items-center justify-center overflow-hidden border border-emerald-100/40 flex-shrink-0">
+        <img src="/farming_sprout_icon.png" alt="Cotton" className="w-14 h-14 object-contain" />
+      </div>
+    );
+  }
+  if (combined.includes("paddy") || combined.includes("fertilizer") || combined.includes("rice") || combined.includes("crop")) {
+    return (
+      <div className="w-20 h-20 rounded-full bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-100/40 flex-shrink-0">
+        <img src="/farming_wheat_icon.png" alt="Paddy" className="w-14 h-14 object-contain" />
+      </div>
+    );
+  }
+  if (combined.includes("rain") || combined.includes("weather") || combined.includes("monsoon") || combined.includes("advisory") || combined.includes("season")) {
+    return (
+      <div className="w-20 h-20 rounded-full bg-sky-50 flex items-center justify-center overflow-hidden border border-sky-100/40 flex-shrink-0">
+        <svg className="w-11 h-11 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21v-1.5m3 1.5v-1.5m3 1.5v-1.5m3 1.5v-1.5" />
+        </svg>
+      </div>
+    );
+  }
+  return (
+    <div className="w-20 h-20 rounded-full bg-emerald-50 flex items-center justify-center overflow-hidden border border-emerald-100/40 flex-shrink-0">
+      <img src="/welcome_farmer.png" alt="Farmer" className="w-full h-full object-cover" />
+    </div>
+  );
+};
+
+const formatCampaignDate = (dateStr: string) => {
+  if (!dateStr) return "Manual Start";
+  const date = new Date(dateStr);
+  return date.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  });
+};
 
 export default function Campaigns() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Form states
   const [name, setName] = useState("");
@@ -448,46 +535,142 @@ export default function Campaigns() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Running":
-        return "bg-[#84CC16]/15 text-[#84CC16] border-[#84CC16]/25 animate-pulse";
-      case "Scheduled":
-        return "bg-[#0F766E]/15 text-[#14B8A6] border-[#0F766E]/25";
-      case "Completed":
-        return "bg-[#059669]/15 text-[#34D399] border-[#059669]/25";
-      case "Failed":
-        return "bg-red-500/15 text-red-400 border-red-500/25";
-      default:
-        return "bg-white/[0.06] text-[#9CA3AF] border-white/[0.08]";
-    }
-  };
-
   const selectClasses = "h-10 w-full rounded-xl border border-black/[0.08] bg-black/[0.02] px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#22C55E]/50 focus:border-[#22C55E]/50 transition-all duration-200";
+
+  const filteredCampaigns = campaigns.filter((c: any) => 
+    c.campaign_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.description && c.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  // Dynamic campaign stats calculation
+  const totalCampaigns = campaigns.length;
+  const completedCampaigns = campaigns.filter(c => c.status === "Completed").length;
+  const runningCampaigns = campaigns.filter(c => c.status === "Running").length;
+  const failedCampaigns = campaigns.filter(c => c.status === "Failed").length;
+
+  const completedPct = totalCampaigns > 0 ? ((completedCampaigns / totalCampaigns) * 100).toFixed(1) : "0.0";
+  const failedPct = totalCampaigns > 0 ? ((failedCampaigns / totalCampaigns) * 100).toFixed(1) : "0.0";
+
+  const statsCards = [
+    { 
+      title: "Total Campaigns", 
+      value: totalCampaigns, 
+      desc: "All time campaigns", 
+      color: "#22C55E", 
+      icon: Megaphone,
+      iconBg: "bg-emerald-500/10",
+      iconColor: "text-emerald-600",
+      chartData: [8, 10, 9, 11, 10, 12] 
+    },
+    { 
+      title: "Completed Campaigns", 
+      value: completedCampaigns, 
+      desc: `${completedPct}% of total`, 
+      color: "#22C55E", 
+      icon: CheckCircle2,
+      iconBg: "bg-emerald-500/10",
+      iconColor: "text-emerald-600",
+      chartData: [5, 6, 6, 7, 7, 8]
+    },
+    { 
+      title: "Running Campaigns", 
+      value: runningCampaigns, 
+      desc: "In progress", 
+      color: "#EAB308", 
+      icon: Clock,
+      iconBg: "bg-yellow-500/10",
+      iconColor: "text-yellow-600",
+      chartData: [1, 2, 1, 2, 2, 2]
+    },
+    { 
+      title: "Failed Campaigns", 
+      value: failedCampaigns, 
+      desc: `${failedPct}% of total`, 
+      color: "#EF4444", 
+      icon: XCircle,
+      iconBg: "bg-red-500/10",
+      iconColor: "text-red-600",
+      chartData: [2, 2, 3, 2, 2, 2]
+    }
+  ];
 
   return (
     <div className="space-y-8 animate-sprout">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] mb-1">Campaigns</h1>
+      {/* Header Banner */}
+      <div className="relative overflow-hidden rounded-[24px] border border-black/[0.05] bg-gradient-to-r from-white to-[#F1F5F9] shadow-sm p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        {/* Background illustration */}
+        <div className="absolute right-0 top-0 bottom-0 w-[55%] hidden md:block select-none pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/70 to-transparent z-10" />
+          <img src="/carousel_farmer_phone.png" alt="Campaigns Banner" className="w-full h-full object-cover object-top" />
+        </div>
+        {/* Left section: Title & Subtitle */}
+        <div className="relative z-20 max-w-xl">
+          <h1 className="text-3xl font-extrabold text-[#0F172A] tracking-tight">Campaigns</h1>
+          <div className="w-16 h-1 bg-[#22C55E] mt-2 mb-3 rounded-full" />
           <p className="text-sm text-[#475569]">Manage and launch voice campaigns to reach your farmers.</p>
         </div>
-
-        <div className="flex items-center gap-2">
+        {/* Right actions */}
+        <div className="relative z-20 flex items-center gap-3 w-full md:w-auto font-medium">
           <Button
             onClick={fetchCampaigns}
             variant="outline"
-            className="border-black/[0.08] text-[#475569] hover:bg-black/[0.02] hover:text-[#0F172A]"
+            className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl px-4 py-2 flex items-center gap-2 font-medium shadow-sm transition-all"
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className="h-4 w-4 text-slate-500" />
             Refresh
           </Button>
           <Button
             onClick={() => setIsModalOpen(true)}
-            className="bg-gradient-to-r from-[#22C55E] to-[#14B8A6] hover:from-[#16A34A] hover:to-[#0D9488] text-white shadow-glow-green border-0"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-4 py-2 flex items-center gap-2 font-medium border-0 shadow-sm transition-all"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4.5 w-4.5" />
             New Campaign
+          </Button>
+        </div>
+      </div>
+
+      {/* KPI Stats Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {statsCards.map((stat, i) => {
+          const Icon = stat.icon;
+          return (
+            <div key={i} className="relative overflow-hidden rounded-[24px] border border-black/[0.05] bg-white shadow-sm p-6 transition-all duration-300 hover:-translate-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.title}</span>
+                <div className={cn("p-2.5 rounded-2xl flex items-center justify-center", stat.iconBg)}>
+                  <Icon className={cn("h-5 w-5", stat.iconColor)} />
+                </div>
+              </div>
+              <div className="flex items-end justify-between mt-4">
+                <div>
+                  <div className="text-3xl font-black text-[#0F172A] tracking-tight">{stat.value.toLocaleString()}</div>
+                  <span className="text-[11px] font-semibold text-slate-400 mt-1 block">
+                    {stat.desc}
+                  </span>
+                </div>
+                <Sparkline data={stat.chartData} color={stat.color} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Search & Filter Bar */}
+      <div className="bg-white rounded-3xl border border-black/[0.05] p-5 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-800 self-start sm:self-auto">Your Campaigns</h2>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-stretch sm:items-center">
+          <div className="relative w-full sm:w-72 group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-[#6B7280] group-focus-within:text-[#22C55E] transition-colors" />
+            <Input
+              placeholder="Search campaigns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-black/[0.01] border-slate-200 focus-visible:ring-[#22C55E]/20 text-[#0F172A] rounded-xl h-10"
+            />
+          </div>
+          <Button variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl h-10 px-4 flex items-center justify-center gap-2">
+            <Filter className="h-4.5 w-4.5 text-slate-500" />
+            Filters
           </Button>
         </div>
       </div>
@@ -1027,60 +1210,113 @@ export default function Campaigns() {
             </Button>
           </div>
         ) : (
-          campaigns.map((campaign) => (
-            <Card key={campaign.id} className="premium-card border-black/[0.05] group overflow-hidden relative">
-              {/* Top accent bar */}
-              <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${
-                campaign.status === "Running" ? "from-[#84CC16] to-[#84CC16]/40" :
-                campaign.status === "Completed" ? "from-[#14B8A6] to-[#14B8A6]/40" :
-                campaign.status === "Failed" ? "from-red-500 to-red-500/40" :
-                "from-[#22C55E] to-[#22C55E]/40"
-              }`} />
-              <CardHeader className="pb-3 pt-5">
-                <div className="flex justify-between items-start mb-2">
-                  <Badge variant="outline" className={getStatusColor(campaign.status)}>
+          filteredCampaigns.map((campaign) => (
+            <Card key={campaign.id} className="relative overflow-hidden rounded-[24px] border border-black/[0.05] bg-white shadow-sm p-6 flex flex-col justify-between group hover:border-[#22C55E]/40 transition-all duration-300">
+              <div>
+                {/* Header: Status badge & Dynamic illustration */}
+                <div className="flex justify-between items-start mb-4">
+                  <span className={cn(
+                    "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border",
+                    campaign.status === "Completed" ? "bg-emerald-50 text-emerald-700 border-emerald-100/55" :
+                    campaign.status === "Running" ? "bg-yellow-50 text-yellow-700 border-yellow-100/55 animate-pulse" :
+                    campaign.status === "Failed" ? "bg-red-50 text-red-700 border-red-100/55" :
+                    campaign.status === "Scheduled" ? "bg-blue-50 text-blue-700 border-blue-100/55" :
+                    "bg-slate-50 text-slate-700 border-slate-100"
+                  )}>
                     {campaign.status}
-                  </Badge>
+                  </span>
+                  {getCampaignIllustration(campaign.campaign_name, campaign.description)}
                 </div>
-                <CardTitle className="text-base font-bold text-[#0F172A] line-clamp-1" title={campaign.campaign_name}>
+
+                {/* Title and Description */}
+                <h3 className="text-base font-extrabold text-[#0F172A] mb-1 line-clamp-1" title={campaign.campaign_name}>
                   {campaign.campaign_name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3 space-y-3">
-                <div className="space-y-2 text-sm text-[#475569]">
-                  <div className="flex items-center">
-                    <Calendar className="mr-2.5 h-3.5 w-3.5 text-[#6B7280]" />
-                    <span className="text-xs">{campaign.scheduled_at ? new Date(campaign.scheduled_at).toLocaleString() : "Manual Start"}</span>
+                </h3>
+                <p className="text-xs text-[#475569] leading-relaxed line-clamp-2 min-h-[32px] mb-4" title={campaign.description}>
+                  {campaign.description || "No description provided."}
+                </p>
+
+                {/* Details list */}
+                <div className="space-y-2.5 text-xs text-[#475569] mb-4">
+                  <div className="flex items-center text-slate-500 font-medium">
+                    <Calendar className="mr-2.5 h-4 w-4 text-slate-400" />
+                    <span>{formatCampaignDate(campaign.scheduled_at)}</span>
                   </div>
-                  <div className="flex items-center">
-                    <Users className="mr-2.5 h-3.5 w-3.5 text-[#6B7280]" />
-                    <span className="text-xs">{campaign.farmers_count.toLocaleString()} Farmers</span>
+                  <div className="flex items-center text-slate-500 font-medium">
+                    <Users className="mr-2.5 h-4 w-4 text-slate-400" />
+                    <span>{campaign.farmers_count.toLocaleString()} Farmers</span>
+                  </div>
+                  <div className="flex items-center text-slate-500 font-medium">
+                    <Phone className="mr-2.5 h-4 w-4 text-slate-400" />
+                    <span>{campaign.campaign_type || "Voice Call"}</span>
                   </div>
                 </div>
-              </CardContent>
-              <CardFooter className="pt-3 border-t border-black/[0.05]">
-                <div className="flex gap-2 w-full">
-                  {campaign.status === "Scheduled" ? (
-                    <Button onClick={() => handleStartCampaign(campaign.id)} size="sm"
-                      className="flex-1 bg-gradient-to-r from-[#22C55E] to-[#14B8A6] hover:from-[#16A34A] hover:to-[#0D9488] text-white text-xs border-0">
-                      <Play className="mr-1.5 h-3.5 w-3.5" /> Start Now
-                    </Button>
-                  ) : campaign.status === "Running" ? (
-                    <Badge className="flex-1 justify-center bg-[#84CC16]/10 text-[#84CC16] border border-[#84CC16]/20 py-1.5 font-medium animate-pulse rounded-xl">
-                      <Rocket className="mr-1.5 h-3.5 w-3.5" /> Running...
-                    </Badge>
-                  ) : (
-                    <Button onClick={() => { window.location.href = `/reports`; }} size="sm" variant="outline"
-                      className="flex-1 border-black/[0.08] text-[#475569] hover:bg-black/[0.02] hover:text-[#0F172A] text-xs">
-                      <Activity className="mr-1.5 h-3.5 w-3.5" /> View Report
-                    </Button>
-                  )}
-                  <Button onClick={() => handleDeleteCampaign(campaign.id)} size="sm" variant="outline"
-                    className="bg-red-500/[0.06] text-red-500 border-red-500/15 hover:bg-red-500/15 hover:text-red-600 p-2">
-                    <Trash2 className="h-3.5 w-3.5" />
+
+                {/* Completed / Failed Alerts */}
+                {campaign.status === "Completed" && (
+                  <div className="bg-[#ECFDF5] border border-[#DCFCE7] text-[#166534] text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1.5 mb-4 animate-fade-in select-none">
+                    <Check className="h-4 w-4 text-[#15803D]" />
+                    Campaign completed successfully
+                  </div>
+                )}
+                {campaign.status === "Failed" && (
+                  <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1.5 mb-4 animate-fade-in select-none">
+                    <XCircle className="h-4 w-4 text-red-600" />
+                    Campaign execution failed
+                  </div>
+                )}
+              </div>
+
+              {/* Card Footer Actions */}
+              <div className="flex items-center gap-2 mt-2 w-full">
+                {campaign.status === "Scheduled" ? (
+                  <Button 
+                    onClick={() => handleStartCampaign(campaign.id)} 
+                    size="sm"
+                    className="flex-1 bg-gradient-to-r from-[#22C55E] to-[#14B8A6] hover:from-[#16A34A] hover:to-[#0D9488] text-white text-xs font-bold rounded-xl h-10 border-0 shadow-sm transition-all"
+                  >
+                    <Play className="mr-1.5 h-4 w-4" /> Start Now
                   </Button>
-                </div>
-              </CardFooter>
+                ) : campaign.status === "Running" ? (
+                  <div className="flex-1 justify-center bg-yellow-50 text-yellow-700 border border-yellow-100/50 py-2.5 rounded-xl text-xs font-bold animate-pulse text-center select-none flex items-center gap-1.5 h-10">
+                    <Rocket className="h-4 w-4" /> Running...
+                  </div>
+                ) : (
+                  <Button 
+                    onClick={() => { window.location.href = `/reports`; }} 
+                    size="sm" 
+                    variant="outline"
+                    className="flex-1 bg-[#F8FAFC] border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl px-4 py-2 text-xs font-bold shadow-sm h-10 flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <Activity className="h-4 w-4 text-slate-500" /> View Report
+                  </Button>
+                )}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      className="border-slate-200 text-slate-500 hover:bg-slate-50 rounded-xl h-10 w-10 p-0 flex items-center justify-center flex-shrink-0 transition-all animate-fade-in"
+                    >
+                      <MoreHorizontal className="h-4.5 w-4.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-white border-black/[0.08] text-[#0F172A] rounded-xl shadow-lg">
+                    <DropdownMenuLabel className="text-[#475569]">Actions</DropdownMenuLabel>
+                    {campaign.status === "Scheduled" && (
+                      <DropdownMenuItem className="cursor-pointer hover:bg-black/[0.04] rounded-lg" onClick={() => handleStartCampaign(campaign.id)}>
+                        <Play className="mr-2 h-4 w-4" /> Start Campaign
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem 
+                      className="cursor-pointer text-red-500 hover:bg-red-500/10 rounded-lg" 
+                      onClick={() => handleDeleteCampaign(campaign.id)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete Campaign
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </Card>
           ))
         )}
