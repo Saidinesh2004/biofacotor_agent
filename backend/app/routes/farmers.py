@@ -126,9 +126,21 @@ def update_farmer(farmer_id: int, farmer_update: FarmerUpdate, db: Session = Dep
 
 @router.delete("/{farmer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_farmer(farmer_id: int, db: Session = Depends(get_db)):
+    from app.models.voice_call import VoiceCall
+    from app.models.conversation_log import ConversationLog
+    from app.models.whatsapp_message import WhatsAppMessage
+    from app.models.campaign import CampaignCall, CampaignFarmer
+
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    
+    # Cascade delete all related records in other tables
+    db.query(VoiceCall).filter(VoiceCall.farmer_id == farmer_id).delete(synchronize_session=False)
+    db.query(ConversationLog).filter(ConversationLog.farmer_id == farmer_id).delete(synchronize_session=False)
+    db.query(WhatsAppMessage).filter(WhatsAppMessage.farmer_id == farmer_id).delete(synchronize_session=False)
+    db.query(CampaignCall).filter(CampaignCall.farmer_id == farmer_id).delete(synchronize_session=False)
+    db.query(CampaignFarmer).filter(CampaignFarmer.farmer_id == farmer_id).delete(synchronize_session=False)
     
     db.delete(farmer)
     db.commit()

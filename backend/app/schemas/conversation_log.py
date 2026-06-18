@@ -16,6 +16,7 @@ class ConversationLogCreate(BaseModel):
 class ConversationLogResponse(ConversationLogCreate):
     id: int
     created_at: datetime
+    campaign_name: Optional[str] = None
 
     class Config:
         from_attributes = True

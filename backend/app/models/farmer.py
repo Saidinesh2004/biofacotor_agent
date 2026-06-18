@@ -16,3 +16,4 @@ class Farmer(Base):
 
     voice_calls = relationship("VoiceCall", back_populates="farmer")
     whatsapp_messages = relationship("WhatsAppMessage", back_populates="farmer")
+    campaigns = relationship("Campaign", secondary="campaign_farmers", back_populates="farmers")

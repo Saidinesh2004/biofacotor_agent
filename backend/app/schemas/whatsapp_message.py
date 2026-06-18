@@ -3,16 +3,16 @@ from datetime import datetime
 from typing import Optional
 
 class WhatsAppMessageBase(BaseModel):
-    farmer_id: int
+    farmer_id: Optional[int] = None
     phone: str
     message: str
-    status: str
 
 class WhatsAppMessageCreate(WhatsAppMessageBase):
     pass
 
 class WhatsAppMessageResponse(WhatsAppMessageBase):
     id: int
+    status: str
     created_at: datetime
 
     class Config:

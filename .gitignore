@@ -35,3 +35,13 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# Agent runtime files
+brain/
+
+# Logs
+*.log

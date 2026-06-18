@@ -5,7 +5,8 @@ from typing import Optional
 class VoiceCallBase(BaseModel):
     farmer_id: int
     phone: str
-    status: str
+    status: str = "Initiated"
+    call_sid: Optional[str] = None
 
 class VoiceCallCreate(VoiceCallBase):
     pass

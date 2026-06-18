@@ -10,6 +10,7 @@ class VoiceCall(Base):
     farmer_id = Column(Integer, ForeignKey("farmers.id"))
     phone = Column(String)
     status = Column(String)
+    call_sid = Column(String, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     farmer = relationship("Farmer", back_populates="voice_calls")
