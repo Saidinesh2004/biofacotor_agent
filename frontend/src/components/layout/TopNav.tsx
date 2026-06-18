@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Loader2, Check, Plus, Leaf, Wifi, WifiOff } from "lucide-react";
+import { User, Loader2, Check, Plus, Wifi, WifiOff } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -130,8 +130,8 @@ export function TopNav() {
         <div className="flex items-center gap-3">
           <Link to="/" className="flex items-center gap-3 group">
             <div className="relative flex-shrink-0">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#22C55E] to-[#14B8A6] flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform duration-300">
-                <Leaf className="h-5 w-5 text-white" />
+              <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 border border-black/[0.05]">
+                <img src="/logo_sprout.png" alt="Biofactor Logo" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#84CC16] border-2 border-white" />
             </div>

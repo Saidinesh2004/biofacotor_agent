@@ -131,8 +131,8 @@ export default function Dashboard() {
         <div className="relative flex flex-col md:flex-row items-center md:items-start justify-between gap-6 pr-0 lg:pr-[320px]">
           <div className="flex items-center gap-6">
             <div className="flex-shrink-0">
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-[#22C55E] to-[#14B8A6] flex items-center justify-center shadow-lg shadow-[#22C55E]/15">
-                <User className="h-8 w-8 text-white" />
+              <div className="h-16 w-16 rounded-2xl overflow-hidden shadow-lg border border-black/[0.05]">
+                <img src="/welcome_farmer.png" alt="Farmer" className="w-full h-full object-cover" />
               </div>
             </div>
             <div>
