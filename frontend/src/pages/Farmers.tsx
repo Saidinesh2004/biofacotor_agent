@@ -9,10 +9,9 @@ import {
 } from "@tanstack/react-table";
 import { 
   Upload, Plus, Search, Filter, MoreHorizontal, 
-  Eye, Edit, Trash, Phone, UserPlus, Inbox, Users, MapPin, 
+  Eye, Edit, Trash, Phone, UserPlus, Inbox,
   Sprout, ChevronLeft, ChevronRight
 } from "lucide-react";
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,33 +32,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const Sparkline = ({ data, color }: { data: number[]; color: string }) => {
-  const chartData = data.map((val, i) => ({ value: val, index: i }));
-  return (
-    <div className="w-[100px] h-[35px] flex-shrink-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-          <defs>
-            <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.2} />
-              <stop offset="100%" stopColor={color} stopOpacity={0.0} />
-            </linearGradient>
-          </defs>
-          <Area 
-            type="monotone" 
-            dataKey="value" 
-            stroke={color} 
-            strokeWidth={1.5} 
-            fill={`url(#grad-${color})`} 
-            dot={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-};
-
 const cn = (...classes: string[]) => classes.filter(Boolean).join(" ");
+
+
+
+
 
 export default function Farmers() {
   const [globalFilter, setGlobalFilter] = useState("");
@@ -289,54 +266,7 @@ export default function Farmers() {
 
   const inputStyle = "bg-black/[0.02] border-black/[0.08] text-[#0F172A] focus:border-[#22C55E]/50";
 
-  // Dynamic stats calculation
-  const totalFarmers = farmers.length;
-  const activeContacts = Math.max(0, farmers.filter(f => f.phone).length - 1) || 11;
-  const uniqueVillages = new Set(farmers.map(f => f.village?.trim().toLowerCase()).filter(Boolean)).size || 6;
-  const uniqueCrops = new Set(farmers.map(f => f.crop?.trim().toLowerCase()).filter(Boolean)).size || 4;
 
-  const statsCards = [
-    { 
-      title: "Total Farmers", 
-      value: totalFarmers, 
-      change: "8% vs last month", 
-      color: "#22C55E", 
-      icon: Users,
-      iconBg: "bg-emerald-500/10",
-      iconColor: "text-emerald-600",
-      chartData: [10, 11, 10, 12, 11, 12] 
-    },
-    { 
-      title: "Active Contacts", 
-      value: activeContacts, 
-      change: "5% vs last month", 
-      color: "#14B8A6", 
-      icon: Phone,
-      iconBg: "bg-teal-500/10",
-      iconColor: "text-teal-600",
-      chartData: [8, 9, 8, 10, 9, 11]
-    },
-    { 
-      title: "Villages Covered", 
-      value: uniqueVillages, 
-      change: "12% vs last month", 
-      color: "#22C55E", 
-      icon: MapPin,
-      iconBg: "bg-emerald-500/10",
-      iconColor: "text-emerald-600",
-      chartData: [4, 5, 5, 6, 5, 6]
-    },
-    { 
-      title: "Crops Tracked", 
-      value: uniqueCrops, 
-      change: "7% vs last month", 
-      color: "#22C55E", 
-      icon: Sprout,
-      iconBg: "bg-emerald-500/10",
-      iconColor: "text-emerald-600",
-      chartData: [3, 3, 4, 4, 4, 4]
-    }
-  ];
 
   // Pagination calculation
   const pageIndex = table.getState().pagination.pageIndex;
@@ -393,31 +323,7 @@ export default function Farmers() {
         </div>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {statsCards.map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <div key={i} className="relative overflow-hidden rounded-[24px] border border-black/[0.05] bg-white shadow-sm p-6 transition-all duration-300 hover:-translate-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.title}</span>
-                <div className={cn("p-2.5 rounded-2xl flex items-center justify-center", stat.iconBg)}>
-                  <Icon className={cn("h-5 w-5", stat.iconColor)} />
-                </div>
-              </div>
-              <div className="flex items-end justify-between mt-4">
-                <div>
-                  <div className="text-3xl font-black text-[#0F172A] tracking-tight">{stat.value.toLocaleString()}</div>
-                  <div className="text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1">
-                    <span>↑ {stat.change}</span>
-                  </div>
-                </div>
-                <Sparkline data={stat.chartData} color={stat.color} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
+
 
       {/* Table Section */}
       <div className="bg-white rounded-3xl border border-black/[0.05] overflow-hidden shadow-sm">

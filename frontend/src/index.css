@@ -347,6 +347,78 @@
   animation: wave-bounce 0.5s ease-in-out infinite;
 }
 
+
+/* Farmer Page Custom Animations */
+@keyframes farmer-wave {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(18deg); }
+}
+
+.animate-farmer-wave {
+  animation: farmer-wave 1.8s ease-in-out infinite;
+  transform-origin: 50% 80%;
+}
+
+@keyframes tractor-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(-0.5deg); }
+  75% { transform: translateY(1.5px) rotate(0.5deg); }
+}
+
+.animate-tractor-bounce {
+  animation: tractor-bounce 0.8s ease-in-out infinite;
+}
+
+@keyframes drip-left {
+  0% { transform: translate(0, 0) scale(0.2); opacity: 0; }
+  30% { opacity: 0.9; }
+  100% { transform: translate(-25px, -35px) scale(0.8); opacity: 0; }
+}
+
+@keyframes drip-mid {
+  0% { transform: translate(0, 0) scale(0.2); opacity: 0; }
+  30% { opacity: 0.9; }
+  100% { transform: translate(0px, -45px) scale(0.8); opacity: 0; }
+}
+
+@keyframes drip-right {
+  0% { transform: translate(0, 0) scale(0.2); opacity: 0; }
+  30% { opacity: 0.9; }
+  100% { transform: translate(25px, -35px) scale(0.8); opacity: 0; }
+}
+
+.animate-drip-left { animation: drip-left 1.4s ease-out infinite; }
+.animate-drip-mid { animation: drip-mid 1.1s ease-out infinite; }
+.animate-drip-right { animation: drip-right 1.6s ease-out infinite; }
+
+@keyframes cloud-float-slow {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(20px); }
+}
+
+.animate-cloud-float-slow {
+  animation: cloud-float-slow 20s ease-in-out infinite;
+}
+
+@keyframes cloud-float-fast {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(35px); }
+}
+
+.animate-cloud-float-fast {
+  animation: cloud-float-fast 12s ease-in-out infinite;
+}
+
+@keyframes sun-ray-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.animate-sun-ray-spin {
+  animation: sun-ray-spin 50s linear infinite;
+  transform-origin: center;
+}
+
 /* ============================================
    PRINT STYLES
    ============================================ */
