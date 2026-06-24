@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
+import os
+import json
+from openai import AzureOpenAI
 
 from app.database import get_db
 from app.models.campaign import Campaign, CampaignFarmer, CampaignCall
@@ -12,7 +15,9 @@ from app.schemas.campaign import (
     CampaignResponse, 
     CampaignDetailResponse, 
     CampaignCallResponse,
-    CampaignFarmerResponse
+    CampaignFarmerResponse,
+    CampaignAIRequest,
+    CampaignAIResponse
 )
 from app.scheduler import run_campaign_async
 
@@ -172,7 +177,7 @@ def get_campaigns_analytics(db: Session = Depends(get_db)):
             ).count()
             failed = db.query(CampaignCall).filter(
                 CampaignCall.campaign_id == c.id,
-                CampaignCall.call_status.in_(["failed", "Failed", "busy", "no-answer", "canceled"])
+                CampaignCall.call_status.in_(["failed", "Failed", "busy", "no-answer", "canceled", "rejected", "Rejected", "no response", "No Response"])
             ).count()
             
             # Exclude missing credentials / failed delivery summary strings to count real replies
@@ -223,7 +228,7 @@ def get_campaigns_analytics(db: Session = Depends(get_db)):
             ).count()
             failed = db.query(CampaignCall).filter(
                 CampaignCall.campaign_id == c.id,
-                CampaignCall.call_status.in_(["failed", "Failed", "busy", "no-answer", "canceled"])
+                CampaignCall.call_status.in_(["failed", "Failed", "busy", "no-answer", "canceled", "rejected", "Rejected", "no response", "No Response"])
             ).count()
             responses = db.query(CampaignCall).filter(
                 CampaignCall.campaign_id == c.id,
@@ -281,14 +286,14 @@ def get_charts_data(campaign_id: Optional[int] = None, db: Session = Depends(get
         if c_type == "WhatsApp Campaign":
             if status.lower() in ["completed", "sent"]:
                 friendly_status = "Reached"
-            elif status.lower() in ["failed", "busy", "no-answer", "canceled"]:
+            elif status.lower() in ["failed", "busy", "no-answer", "canceled", "rejected", "no response"]:
                 friendly_status = "Failed"
             else:
                 friendly_status = status.capitalize()
         else:
             if status.lower() in ["completed", "answered"]:
                 friendly_status = "Answered"
-            elif status.lower() in ["failed", "busy", "no-answer", "canceled"]:
+            elif status.lower() in ["failed", "busy", "no-answer", "canceled", "rejected", "no response"]:
                 friendly_status = "Failed"
             elif status.lower() in ["initiated", "ringing", "queued", "in-progress"]:
                 friendly_status = "Initiated"
@@ -338,7 +343,6 @@ def get_charts_data(campaign_id: Optional[int] = None, db: Session = Depends(get
         "crop_distribution": crop_dist,
         "performance_trend": performance_trend
     }
-
 @router.delete("/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_campaign(campaign_id: int, db: Session = Depends(get_db)):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -347,3 +351,68 @@ def delete_campaign(campaign_id: int, db: Session = Depends(get_db)):
     db.delete(campaign)
     db.commit()
     return None
+
+@router.post("/analyze-description", response_model=CampaignAIResponse)
+def analyze_description(payload: CampaignAIRequest):
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+
+    if not api_key or not endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Azure OpenAI credentials are not configured. Please add AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT to your backend .env file."
+        )
+
+    try:
+        client = AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=endpoint,
+            api_version=api_version
+        )
+
+        prompt = f"""
+        Analyze the following draft description for a WhatsApp broadcast campaign to farmers:
+        "{payload.raw_text}"
+
+        Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+        Extract and structure the following details into a JSON object:
+        - "polished_message": A well-written, professional, and friendly broadcast message suitable for a farmer via WhatsApp. Use line breaks, bullet points, and basic emojis where appropriate. Keep it concise.
+        - "suggested_name": A short title for the campaign (max 5 words).
+        - "detected_crop": The primary crop name mentioned (e.g. "Cotton", "Paddy", "Wheat", etc.) or null if no crop is mentioned.
+        - "suggested_date": The date of scheduling in YYYY-MM-DD format if a specific date or relative day is mentioned (e.g. "next Tuesday", "tomorrow", "on Friday"). If no date is mentioned, return null.
+
+        The response MUST be a single valid JSON object containing exactly these keys: "polished_message", "suggested_name", "detected_crop", "suggested_date".
+        Do not output any markdown code blocks, HTML, or conversational text outside of the JSON.
+        """
+
+        response = client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that returns only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3
+        )
+
+        data = json.loads(response.choices[0].message.content.strip())
+
+        return CampaignAIResponse(
+            polished_message=data.get("polished_message", payload.raw_text),
+            suggested_name=data.get("suggested_name", "AI Campaign"),
+            detected_crop=data.get("detected_crop"),
+            suggested_date=data.get("suggested_date")
+        )
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to parse AI response as valid JSON."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Azure OpenAI Error: {str(e)}"
+        )

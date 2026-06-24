@@ -65,3 +65,13 @@ class CampaignSummaryStats(BaseModel):
     responses_collected: int
     average_duration: float
     success_rate: float
+
+class CampaignAIRequest(BaseModel):
+    raw_text: str
+
+class CampaignAIResponse(BaseModel):
+    polished_message: str
+    suggested_name: str
+    detected_crop: Optional[str] = None
+    suggested_date: Optional[str] = None
+

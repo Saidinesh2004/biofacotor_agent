@@ -35,7 +35,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         ConversationLog.call_status.in_(["completed", "Completed"])
     ).scalar() or 0
     direct_failed = db.query(func.count(ConversationLog.id)).filter(
-        ConversationLog.call_status.in_(["failed", "busy", "no-answer", "canceled", "Failed"])
+        ConversationLog.call_status.in_(["failed", "busy", "no-answer", "canceled", "Failed", "rejected", "Rejected", "no response", "No Response"])
     ).scalar() or 0
     direct_responses = db.query(func.count(ConversationLog.id)).filter(
         ConversationLog.conversation_summary != None
@@ -53,7 +53,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         CampaignCall.call_status.in_(["completed", "Completed"])
     ).scalar() or 0
     campaign_calls_failed = db.query(func.count(CampaignCall.id)).filter(
-        CampaignCall.call_status.in_(["failed", "busy", "no-answer", "canceled", "Failed"])
+        CampaignCall.call_status.in_(["failed", "busy", "no-answer", "canceled", "Failed", "rejected", "Rejected", "no response", "No Response"])
     ).scalar() or 0
     campaign_responses = db.query(func.count(CampaignCall.id)).filter(
         CampaignCall.summary != None
@@ -265,10 +265,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         s = status_str.lower()
         if s in ["completed", "answered"]:
             return "Answered"
-        elif s in ["no-answer", "ringing", "queued"]:
+        elif s in ["no-answer", "ringing", "queued", "no response"]:
             return "Missed"
         elif s in ["busy"]:
             return "Busy"
+        elif s in ["rejected"]:
+            return "Failed"
         else:
             return "Failed"
 

@@ -1,7 +1,0 @@
-Full Name,Cell Phone,Home Village,Crop,Language
-Rajesh Kumar,9876543210,Karnal,Wheat,Hindi
-Suresh Patel,918765432101,Anand,Cotton,Gujarati
-Amit Singh,07765432102,Patna,Rice,Hindi
-Invalid Mobile,12345,Karnal,Wheat,Hindi
-Duplicate Rajesh,9876543210,Karnal,Wheat,Hindi
-Missing Village,9988776655,,Wheat,Hindi

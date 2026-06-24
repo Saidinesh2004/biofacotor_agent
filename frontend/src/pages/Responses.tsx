@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
-import { MessageSquareText, PhoneCall, Download, Search, RefreshCw, Inbox } from "lucide-react";
+import { MessageSquareText, PhoneCall, Download, Search, RefreshCw, Inbox, Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,6 +19,60 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+
+interface ParsedMessage {
+  role: "agent" | "user" | "unknown";
+  content: string;
+}
+
+const parseTranscript = (raw: any): ParsedMessage[] => {
+  if (!raw) return [];
+
+  if (Array.isArray(raw)) {
+    return raw.map((msg: any) => {
+      const r = (msg.role || "").toLowerCase();
+      const isAgent = r === "agent" || r === "assistant" || r === "ai" || r === "bot" || r === "system";
+      return {
+        role: isAgent ? "agent" : "user",
+        content: msg.content || msg.message || msg.text || ""
+      };
+    });
+  }
+
+  if (typeof raw !== "string") return [];
+
+  const lines = raw.split("\n");
+  const parsed: ParsedMessage[] = [];
+  const speakerRegex = /^(?:\[[^\]]+\]\s*)?(AI|Agent|Assistant|Bot|System|User|Farmer|Customer|Human|Speaker\s*\d+)\s*:\s*(.*)$/i;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const match = trimmed.match(speakerRegex);
+    if (match) {
+      const speaker = match[1].toLowerCase();
+      const content = match[2].trim();
+      const isAgent = ["ai", "agent", "assistant", "bot", "system"].includes(speaker);
+
+      parsed.push({
+        role: isAgent ? "agent" : "user",
+        content: content
+      });
+    } else {
+      if (parsed.length > 0) {
+        parsed[parsed.length - 1].content += "\n" + trimmed;
+      } else {
+        parsed.push({
+          role: "unknown",
+          content: trimmed
+        });
+      }
+    }
+  }
+
+  return parsed;
+};
 
 export default function Responses() {
   const [responses, setResponses] = useState<any[]>([]);
@@ -173,14 +227,46 @@ export default function Responses() {
 
   const getStatusBadge = (status: string) => {
     const isCompleted = status === "completed" || status === "Completed";
+    const isRejected = status === "rejected" || status === "Rejected";
+    const isNoResponse = status === "no response" || status === "no-answer" || status === "No Response" || status === "no_response";
+    
+    if (isCompleted) {
+      return (
+        <Badge
+          variant="outline"
+          className="border-[#0F766E]/25 text-[#14B8A6] bg-[#0F766E]/10"
+        >
+          Completed
+        </Badge>
+      );
+    }
+    
+    if (isRejected) {
+      return (
+        <Badge
+          variant="outline"
+          className="border-red-500/25 text-red-500 bg-red-500/10"
+        >
+          Rejected
+        </Badge>
+      );
+    }
+
+    if (isNoResponse) {
+      return (
+        <Badge
+          variant="outline"
+          className="border-[#475569]/25 text-[#475569] bg-[#475569]/10"
+        >
+          No Response
+        </Badge>
+      );
+    }
+
     return (
       <Badge
         variant="outline"
-        className={
-          isCompleted
-            ? "border-[#0F766E]/25 text-[#14B8A6] bg-[#0F766E]/10"
-            : "border-amber-500/25 text-amber-400 bg-amber-500/10"
-        }
+        className="border-amber-500/25 text-amber-400 bg-amber-500/10"
       >
         {status}
       </Badge>
@@ -342,7 +428,11 @@ export default function Responses() {
                 <div>
                   <p className="text-[10px] text-[#6B7280] mb-1 uppercase tracking-wider font-medium">Duration</p>
                   <p className="text-sm font-semibold text-[#0F172A]">
-                    {selectedResponse.call_duration ? `${selectedResponse.call_duration}s` : "Unknown"}
+                    {selectedResponse.call_duration
+                      ? selectedResponse.call_duration >= 60
+                        ? `${Math.floor(selectedResponse.call_duration / 60)}m ${selectedResponse.call_duration % 60}s`
+                        : `${selectedResponse.call_duration}s`
+                      : "—"}
                   </p>
                 </div>
                 <div className="col-span-2">
@@ -353,9 +443,16 @@ export default function Responses() {
 
               <div className="pt-4 border-t border-black/[0.05]">
                 <h4 className="text-xs font-semibold text-[#0F172A] mb-2 uppercase tracking-wider">AI Summary</h4>
-                <p className="text-sm text-[#475569] leading-relaxed bg-black/[0.01] p-3 rounded-xl border border-black/[0.05]">
-                  {selectedResponse.conversation_summary || "No summary generated yet."}
-                </p>
+                {selectedResponse.conversation_summary ? (
+                  <p className="text-sm text-[#475569] leading-relaxed bg-black/[0.01] p-3 rounded-xl border border-black/[0.05]">
+                    {selectedResponse.conversation_summary}
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 p-3 rounded-xl">
+                    <Languages className="h-4 w-4 animate-pulse flex-shrink-0" />
+                    <span>AI summary is being generated — click <strong>Refresh</strong> in a few seconds.</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -363,23 +460,29 @@ export default function Responses() {
 
                 <div className="space-y-3 text-sm">
                   {selectedResponse.farmer_responses ? (
-                    Array.isArray(selectedResponse.farmer_responses) ? (
-                      selectedResponse.farmer_responses.map((msg: any, idx: number) => (
+                    (() => {
+                      const parsed = parseTranscript(selectedResponse.farmer_responses);
+                      if (parsed.length === 0) {
+                        return <p className="text-[#6B7280] italic text-sm">No transcript available.</p>;
+                      }
+                      return parsed.map((msg, idx) => (
                         <div
                           key={idx}
                           className={`p-3 rounded-xl border border-black/[0.05] ${
-                            msg.role === "agent" ? "bg-[#22C55E]/[0.08] ml-4" : "bg-black/[0.01] mr-4"
+                            msg.role === "agent"
+                              ? "bg-[#22C55E]/[0.08] ml-4"
+                              : msg.role === "user"
+                              ? "bg-black/[0.01] mr-4"
+                              : "bg-black/[0.01] mx-2"
                           }`}
                         >
-                          <strong className="text-[10px] uppercase tracking-wider text-[#475569]">{msg.role === "agent" ? "AI" : "Farmer"}</strong>
-                          <p className="text-[#334155] mt-1">{msg.content || msg.message || ""}</p>
+                          <strong className="text-[10px] uppercase tracking-wider text-[#475569]">
+                            {msg.role === "agent" ? "AI" : msg.role === "user" ? "Farmer" : "Call Note"}
+                          </strong>
+                          <p className="text-[#334155] mt-1 whitespace-pre-wrap">{msg.content}</p>
                         </div>
-                      ))
-                    ) : (
-                      <pre className="whitespace-pre-wrap font-sans bg-black/[0.01] p-3 rounded-xl border border-black/[0.05] text-[#334155]">
-                        {selectedResponse.farmer_responses}
-                      </pre>
-                    )
+                      ));
+                    })()
                   ) : (
                     <p className="text-[#6B7280] italic text-sm">No transcript available.</p>
                   )}

@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Plus, Play, Calendar, Users, Activity, Search, RefreshCw, 
   Trash2, Rocket, Upload, Download, CheckCircle2, AlertCircle,
-  Clock, XCircle, Megaphone, MoreHorizontal, Phone, Check, Filter
+  Clock, XCircle, Megaphone, MoreHorizontal, Phone, Check, Filter,
+  Sparkles, Loader2
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,7 @@ export default function Campaigns() {
   // Form states
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [type, setType] = useState("Voice Campaign");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -466,6 +468,52 @@ export default function Campaigns() {
     }
   };
 
+  const handleAIAssist = async () => {
+    if (!description.trim()) return;
+    try {
+      setIsAiLoading(true);
+      const res = await api.post("/campaigns/analyze-description", {
+        raw_text: description
+      });
+      const data = res.data;
+      
+      if (data.polished_message) {
+        setDescription(data.polished_message);
+      }
+      if (data.suggested_name) {
+        setName(data.suggested_name);
+      }
+      
+      if (data.suggested_date) {
+        setScheduledDate(data.suggested_date);
+        setStatus("Scheduled");
+      }
+      
+      if (data.detected_crop) {
+        const cropVal = data.detected_crop.trim();
+        setFilterCrop(cropVal);
+        
+        const params = new URLSearchParams();
+        if (filterName) params.append("name", filterName);
+        if (filterPhone) params.append("phone", filterPhone);
+        if (filterVillage) params.append("village", filterVillage);
+        params.append("crop", cropVal);
+
+        const resFarmers = await api.get(`/campaigns/farmers-selection?${params.toString()}`);
+        if (resFarmers.data && resFarmers.data.length > 0) {
+          const newSelectedIds = resFarmers.data.map((f: any) => f.id);
+          setSelectedFarmerIds(newSelectedIds);
+        }
+      }
+    } catch (err: any) {
+      console.error("AI Assist failed:", err);
+      const errMsg = err.response?.data?.detail || err.message || "Failed to process description with AI.";
+      alert(errMsg);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleConfirmSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) {
@@ -601,7 +649,7 @@ export default function Campaigns() {
         {/* Background illustration */}
         <div className="absolute right-0 top-0 bottom-0 w-[55%] hidden md:block select-none pointer-events-none">
           <div className="absolute inset-0 bg-gradient-to-r from-white via-white/70 to-transparent z-10" />
-          <img src="/carousel_farmer_phone.png" alt="Campaigns Banner" className="w-full h-full object-cover object-top" />
+          <img src="/campaigns_banner_land.png" alt="Campaigns Banner" className="w-full h-full object-cover object-top" />
         </div>
         {/* Left section: Title & Subtitle */}
         <div className="relative z-20 max-w-xl">
@@ -702,10 +750,34 @@ export default function Campaigns() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="description" className="text-[#475569] text-xs font-medium">Description</Label>
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="description" className="text-[#475569] text-xs font-medium">Description</Label>
+                  {type === "WhatsApp Campaign" && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleAIAssist}
+                      disabled={isAiLoading || !description.trim()}
+                      className="h-6 text-[11px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50 flex items-center gap-1.5 px-2 rounded-lg border border-emerald-100/50 shadow-sm transition-all"
+                    >
+                      {isAiLoading ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin text-emerald-600" />
+                          <span>Autofilling...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3 w-3 text-emerald-500 fill-emerald-50" />
+                          <span>Autofill with AI</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
                 <Textarea
                   id="description"
-                  placeholder="Details of the broadcast message..."
+                  placeholder={type === "WhatsApp Campaign" ? "Type a prompt (e.g. alert cotton farmers about rain on next Monday) then click Autofill with AI..." : "Details of the broadcast message..."}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="bg-black/[0.02] border-black/[0.08] text-[#0F172A] h-20 focus:border-[#22C55E]/50"

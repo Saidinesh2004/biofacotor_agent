@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, status, HTTPException, Request
+from fastapi import APIRouter, Depends, status, HTTPException, Request, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List
 import os
-from twilio.rest import Client
+import requests
+import json
 from app.database import get_db
 from app.models.voice_call import VoiceCall
 from app.models.conversation_log import ConversationLog
@@ -12,157 +13,124 @@ from app.models.farmer import Farmer
 
 router = APIRouter()
 
-# Shared in-memory store: call_uuid -> farmer_name
-# Populated when call is initiated so bridge can look up the farmer's name
-_call_context: dict = {}
 
-# Initialize Twilio Client
-twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
-twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
-twilio_client = Client(twilio_sid, twilio_token) if (twilio_sid and twilio_token) else None
+def translate_and_summarize(transcript: str, farmer_name: str = "Farmer") -> dict:
+    """
+    Use Azure OpenAI to generate an English summary from a Telugu transcript.
+    The transcript itself is kept in its original language (Telugu).
+    Returns a dict with keys: 'telugu_transcript' (original) and 'english_summary'.
+    """
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+    from openai import AzureOpenAI
 
-import requests
-from requests.auth import HTTPBasicAuth
+    api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1").strip()
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview").strip()
 
-@router.post("/twiml")
-async def get_twiml(request: Request):
-    # Retrieve Twilio's POST parameters
-    form_data = {}
+    if not api_key or not endpoint:
+        return {"telugu_transcript": transcript, "english_summary": ""}
+
+    # Convert transcript to plain text if it's a list/dict
+    if isinstance(transcript, (list, dict)):
+        transcript_str = json.dumps(transcript, ensure_ascii=False)
+    else:
+        transcript_str = str(transcript)
+
+    if not transcript_str.strip():
+        return {"telugu_transcript": "", "english_summary": ""}
+
     try:
-        form = await request.form()
-        form_data = dict(form)
-        from_number = form_data.get("From") or ""
-        to_number = form_data.get("To") or ""
-    except Exception:
-        from_number = ""
-        to_number = ""
+        client = AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=endpoint,
+            api_version=api_version
+        )
 
-    # Get farmer_name from query parameters
-    farmer_name = request.query_params.get("farmer_name", "Farmer").strip()
-    
-    agent_id = os.getenv("ELEVENLABS_AGENT_ID", "").strip()
-    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+        prompt = f"""
+You are analyzing a phone call transcript between an AI agricultural assistant (Biofactor) and a farmer named {farmer_name}.
+The transcript may be in Telugu or a mix of Telugu and English.
 
-    if not agent_id or not api_key:
-        return Response(content="<Response><Say>Config Error</Say></Response>", media_type="application/xml")
+Your task:
+Write a concise English summary (3-5 sentences) covering:
+- What the farmer said about their crop/problem
+- Key questions or concerns raised
+- What the AI recommended or discussed
+- Overall outcome of the call
 
-    # Call ElevenLabs Register Call API to support dynamic variables
-    if from_number and to_number:
-        try:
-            url = "https://api.elevenlabs.io/v1/convai/twilio/register-call"
-            headers = {
-                "xi-api-key": api_key,
-                "Content-Type": "application/json"
+Respond with a JSON object with exactly one key:
+- "english_summary": the concise English summary paragraph
+
+Transcript to process:
+{transcript_str[:6000]}
+"""
+
+        response = client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": "You are an expert agricultural call analyst. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2
+        )
+
+        data = json.loads(response.choices[0].message.content.strip())
+        return {
+            "telugu_transcript": transcript_str,
+            "english_summary": data.get("english_summary", "")
+        }
+    except Exception as e:
+        print(f"[Azure OpenAI] translate_and_summarize error: {e}")
+        return {"telugu_transcript": transcript_str, "english_summary": ""}
+def make_vapi_call(recipient_phone: str, farmer_name: str) -> str:
+    """
+    Initiate an outbound call via VAPI's REST API.
+    VAPI handles both the telephony and the AI voice agent.
+    Returns the VAPI call ID.
+    """
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+
+    vapi_api_key = os.getenv("VAPI_API_KEY", "").strip()
+    vapi_assistant_id = os.getenv("VAPI_ASSISTANT_ID", "").strip()
+    vapi_phone_number_id = os.getenv("VAPI_PHONE_NUMBER_ID", "").strip()
+
+    if not vapi_api_key or not vapi_assistant_id or not vapi_phone_number_id:
+        raise Exception("VAPI_API_KEY, VAPI_ASSISTANT_ID, and VAPI_PHONE_NUMBER_ID must be set in .env")
+
+    url = "https://api.vapi.ai/call/phone"
+    headers = {
+        "Authorization": f"Bearer {vapi_api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "phoneNumberId": vapi_phone_number_id,
+        "assistantId": vapi_assistant_id,
+        "customer": {
+            "number": recipient_phone,
+            "name": farmer_name
+        },
+        "assistantOverrides": {
+            "variableValues": {
+                "farmer_name": farmer_name
             }
-            payload = {
-                "agent_id": agent_id,
-                "from_number": from_number,
-                "to_number": to_number,
-                "direction": "outbound",
-                "conversation_initiation_client_data": {
-                    "type": "conversation_initiation_client_data",
-                    "dynamic_variables": {
-                        "farmer_name": farmer_name
-                    }
-                }
-            }
-            resp = requests.post(url, headers=headers, json=payload, timeout=10)
-            if resp.status_code == 200:
-                twiml_string = resp.text.strip()
-                if twiml_string:
-                    print(f"[DEBUG] Successfully registered Twilio call. Dynamic TwiML: {twiml_string}")
-                    
-                    # Extract conversation ID from the TwiML XML
-                    import re
-                    conv_id_match = re.search(r'value="([^"]+)"', twiml_string)
-                    if conv_id_match:
-                        conversation_id = conv_id_match.group(1)
-                        try:
-                            call_sid = form_data.get("CallSid")
-                            if call_sid:
-                                # Fetch a database session manually since we are in a route without Depends
-                                from app.database import SessionLocal
-                                from app.models.campaign import CampaignCall
-                                db = SessionLocal()
-                                try:
-                                    conv_log = db.query(ConversationLog).filter(ConversationLog.call_sid == call_sid).first()
-                                    if conv_log:
-                                        conv_log.elevenlabs_conversation_id = conversation_id
-                                        db.commit()
-                                    
-                                    campaign_call = db.query(CampaignCall).filter(CampaignCall.twilio_call_sid == call_sid).first()
-                                    if campaign_call:
-                                        campaign_call.elevenlabs_conversation_id = conversation_id
-                                        db.commit()
-                                except Exception as inner_db_err:
-                                    print(f"[DEBUG] Inner DB error: {inner_db_err}")
-                                    db.rollback()
-                                finally:
-                                    db.close()
-                        except Exception as db_err:
-                            print(f"[DEBUG] Error saving conversation ID to DB: {db_err}")
-                            
-                    return Response(content=twiml_string, media_type="application/xml")
-            
-            print(f"[DEBUG] Register call failed (status={resp.status_code}): {resp.text}.")
-            if resp.status_code in [401, 403]:
-                err_msg = "Call registration failed. Your ElevenLabs API key is missing the convai_write permission. Please check your ElevenLabs developer settings."
-                err_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>{err_msg}</Say>
-    <Hangup/>
-</Response>"""
-                return Response(content=err_xml, media_type="application/xml")
-        except Exception as e:
-            print(f"[DEBUG] Error registering call with ElevenLabs: {e}.")
+        }
+    }
 
-    # Fallback TwiML
-    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Connect>
-        <Stream url="wss://api.elevenlabs.io/v1/convai/conversation?agent_id={agent_id}" track="both_tracks">
-            <Parameter name="xi-api-key" value="{api_key}" />
-        </Stream>
-    </Connect>
-</Response>"""
-    return Response(content=twiml, media_type="application/xml")
+    resp = requests.post(url, headers=headers, json=payload, timeout=15)
+    print(f"[VAPI] Call response status={resp.status_code}: {resp.text}")
 
-@router.post("/vobiz-xml")
-async def get_vobiz_xml(request: Request):
-    ngrok_url = (os.getenv('NGROK_URL') or "").strip()
-    ws_bridge_url = ngrok_url.replace("https://", "wss://").replace("http://", "ws://")
+    if resp.status_code not in [200, 201]:
+        raise Exception(f"VAPI Call Failed ({resp.status_code}): {resp.text}")
 
-    # Vobiz POSTs the answer_url with call details in the form body
-    form_dict = {}
-    try:
-        form = await request.form()
-        form_dict = dict(form)
-        request_uuid = form_dict.get("RequestUUID") or form_dict.get("request_uuid") or ""
-    except Exception:
-        request_uuid = request.query_params.get("request_uuid", "")
+    call_data = resp.json()
+    call_id = call_data.get("id")
+    if not call_id:
+        raise Exception(f"VAPI response missing call ID: {call_data}")
 
-    # Build bridge URL - include request_uuid so bridge can look up farmer name
-    bridge_endpoint = f"{ws_bridge_url}/ws/bridge"
-    if request_uuid:
-        bridge_endpoint += f"?call_id={request_uuid}"
-
-    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">{bridge_endpoint}</Stream>
-    <Wait length="3600" />
-</Response>"""
-    
-    headers_dict = dict(request.headers)
-    with open("vobiz_debug.log", "a") as f:
-        f.write(f"\n--- Vobiz Request Log ---\n")
-        f.write(f"Call ID: {request_uuid}\n")
-        f.write(f"Headers: {headers_dict}\n")
-        f.write(f"Form Params: {form_dict}\n")
-        f.write(f"Query Params: {dict(request.query_params)}\n")
-        f.write(f"XML: {xml_content}\n")
-        f.write(f"-------------------------\n")
-        
-    return Response(content=xml_content, media_type="application/xml")
+    return call_id
 
 
 @router.post("/", response_model=VoiceCallResponse, status_code=status.HTTP_201_CREATED)
@@ -172,108 +140,17 @@ def create_voice_call(voice_call: VoiceCallCreate, db: Session = Depends(get_db)
         if not recipient_phone.startswith("+"):
             recipient_phone = f"+{recipient_phone}"
 
-        # Force reload .env so it gets the new ELEVENLABS_PHONE_NUMBER_ID without restarting uvicorn
-        from dotenv import load_dotenv
-        load_dotenv(override=True)
-
-        vobiz_auth_id = os.getenv("VOBIZ_AUTH_ID", "").strip()
-        vobiz_auth_secret = os.getenv("VOBIZ_AUTH_SECRET", "").strip()
-        vobiz_app_id = os.getenv("VOBIZ_APP_ID", "").strip()
-
-        # Re-initialize local Twilio client in case env was updated
-        t_sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
-        t_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
-        t_number = os.getenv("TWILIO_PHONE_NUMBER", "").strip()
-
         farmer = db.query(Farmer).filter(Farmer.id == voice_call.farmer_id).first()
         farmer_name = farmer.name if farmer else "Farmer"
 
-        if vobiz_auth_id and vobiz_auth_secret and vobiz_app_id:
-            # VOBIZ CALL LOGIC
-            vobiz_from = os.getenv("VOBIZ_PHONE_NUMBER", "").strip()
-            if vobiz_from.startswith("+"):
-                vobiz_from = vobiz_from[1:]
-
-            base_url = (os.getenv("NGROK_URL") or "http://localhost:8000").strip()
-            url = f"https://api.vobiz.ai/api/v1/Account/{vobiz_auth_id}/Call/"
-            payload = {
-                "from": vobiz_from,
-                "to": recipient_phone,
-                "answer_url": f"{base_url}/voice-calls/vobiz-xml",
-                "answer_method": "POST",
-                "app_id": vobiz_app_id
-            }
-            headers = {
-                "X-Auth-ID": vobiz_auth_id,
-                "X-Auth-Token": vobiz_auth_secret,
-                "Content-Type": "application/x-www-form-urlencoded"
-            }
-
-            response = requests.post(
-                url,
-                data=payload,
-                headers=headers,
-                timeout=10
-            )
-
-            if response.status_code not in [200, 201, 202]:
-                raise Exception(f"Vobiz Call Failed: {response.text}")
-
-            call_sid = response.json().get("request_uuid")
-            # Populate call context for the WebSocket bridge to pick up
-            _call_context[call_sid] = {"farmer_name": farmer_name}
-        elif t_sid and t_token and t_number:
-            # DIRECT TWILIO CLIENT CALL LOGIC (using local Twilio credentials from .env)
-            from twilio.rest import Client
-            local_client = Client(t_sid, t_token)
-            base_url = (os.getenv("NGROK_URL") or "http://localhost:8000").strip()
-            import urllib.parse
-            twiml_url = f"{base_url}/voice-calls/twiml?farmer_name={urllib.parse.quote(farmer_name)}"
-            status_callback_url = f"{base_url}/voice-calls/twilio-status"
-            
-            call = local_client.calls.create(
-                to=recipient_phone,
-                from_=t_number,
-                url=twiml_url,
-                status_callback=status_callback_url,
-                status_callback_event=["initiated", "ringing", "answered", "completed"],
-                status_callback_method="POST"
-            )
-            call_sid = call.sid
-        else:
-            # FORCE ELEVENLABS NATIVE TWILIO CALL LOGIC
-            agent_id = os.getenv("ELEVENLABS_AGENT_ID", "").strip()
-            phone_number_id = os.getenv("ELEVENLABS_PHONE_NUMBER_ID", "").strip()
-            api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-
-            url = "https://api.elevenlabs.io/v1/convai/twilio/outbound-call"
-            headers = {
-                "xi-api-key": api_key,
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "agent_id": agent_id,
-                "agent_phone_number_id": phone_number_id,
-                "to_number": recipient_phone,
-                "conversation_initiation_client_data": {
-                    "type": "conversation_initiation_client_data",
-                    "dynamic_variables": {
-                        "farmer_name": farmer_name
-                    }
-                }
-            }
-            
-            resp = requests.post(url, headers=headers, json=payload)
-            resp_data = resp.json()
-            if resp.status_code != 200:
-                raise Exception(f"ElevenLabs Call Failed: {resp_data}")
-                
-            call_sid = resp_data.get("callSid")
+        # VAPI makes the call directly — handles AI + telephony together
+        call_id = make_vapi_call(recipient_phone, farmer_name)
+        print(f"[VAPI] Call initiated → call_id={call_id} to {recipient_phone} ({farmer_name})")
 
         # Save to Database
         db_call_data = voice_call.model_dump()
         db_call_data["status"] = "Initiated"
-        db_call_data["call_sid"] = call_sid
+        db_call_data["call_sid"] = call_id
         new_call = VoiceCall(**db_call_data)
         db.add(new_call)
         db.commit()
@@ -284,7 +161,7 @@ def create_voice_call(voice_call: VoiceCallCreate, db: Session = Depends(get_db)
             farmer_id=voice_call.farmer_id,
             farmer_name=farmer_name,
             phone_number=recipient_phone,
-            call_sid=call_sid,
+            call_sid=call_id,
             call_status="Initiated"
         )
         db.add(conv_log)
@@ -292,110 +169,133 @@ def create_voice_call(voice_call: VoiceCallCreate, db: Session = Depends(get_db)
 
         return new_call
     except Exception as e:
-        print(f"Call Error: {e}")
+        print(f"[VAPI] Call Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/", response_model=List[VoiceCallResponse])
 def get_voice_calls(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     calls = db.query(VoiceCall).offset(skip).limit(limit).all()
     return calls
 
-@router.post("/twilio-status")
-async def twilio_status(request: Request, db: Session = Depends(get_db)):
-    form_data = await request.form()
-    call_sid = form_data.get("CallSid")
-    call_status = form_data.get("CallStatus")
-    duration = form_data.get("CallDuration")
-    
-    if call_sid and call_status:
-        print(f"[DEBUG] Twilio Status Update: {call_status} (CallSid: {call_sid})")
-        # 1. Update CampaignCall if exists
-        from app.models.campaign import CampaignCall
-        from app.scheduler import check_and_update_campaign_status
-        campaign_call = db.query(CampaignCall).filter(CampaignCall.twilio_call_sid == call_sid).first()
-        if campaign_call:
-            campaign_call.call_status = call_status
-            if duration:
-                campaign_call.duration = int(duration)
-            db.commit()
-            check_and_update_campaign_status(campaign_call.campaign_id, db)
-            
-        # 2. Update conversation log (direct call)
-        conv_log = db.query(ConversationLog).filter(ConversationLog.call_sid == call_sid).first()
-        if conv_log:
-            conv_log.call_status = call_status
-            if duration:
-                conv_log.call_duration = int(duration)
-            db.commit()
 
-        # 3. Update voice call history (direct call)
-        formatted_status = call_status.replace("-", " ").title()
-        voice_call = db.query(VoiceCall).filter(VoiceCall.call_sid == call_sid).first()
-        if voice_call:
-            voice_call.status = formatted_status
-            db.commit()
-            
-    return Response(status_code=200)
-
-@router.post("/elevenlabs-webhook")
-async def elevenlabs_webhook(request: Request, db: Session = Depends(get_db)):
+@router.post("/vapi-webhook")
+async def vapi_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """
+    VAPI posts call events here (end-of-call-report, status updates).
+    - Telugu transcript is saved IMMEDIATELY to the DB (no AI needed).
+    - English summary is generated in background via Azure OpenAI.
+    """
     try:
         payload = await request.json()
-        agent_id = payload.get("agent_id")
-        conversation_id = payload.get("conversation_id")
-        
-        transcript = payload.get("transcript", [])
-        summary = payload.get("analysis", {}).get("summary", "No summary available")
-        
-        # Extract call_sid from payload if provided
-        call_sid = payload.get("call_sid") or payload.get("metadata", {}).get("call_sid") or payload.get("custom_metadata", {}).get("call_sid")
-        if not call_sid:
-            data = payload.get("data", {})
-            if isinstance(data, dict):
-                call_sid = data.get("call_sid") or data.get("metadata", {}).get("call_sid") or data.get("custom_metadata", {}).get("call_sid")
-                
-        # Format transcript as text
-        formatted_transcript = ""
-        if isinstance(transcript, list):
-            formatted_transcript = "\n".join([f"{msg.get('role', 'unknown').capitalize()}: {msg.get('message', msg.get('content', ''))}" for msg in transcript])
-        else:
-            formatted_transcript = str(transcript)
+        message = payload.get("message", {})
+        event_type = message.get("type", "")
+        call_data = message.get("call", {})
 
-        # 1. Check CampaignCall
-        from app.models.campaign import CampaignCall
-        from app.scheduler import check_and_update_campaign_status
-        
-        campaign_call = None
-        if call_sid:
-            campaign_call = db.query(CampaignCall).filter(CampaignCall.twilio_call_sid == call_sid).first()
-            
-        if campaign_call:
-            campaign_call.elevenlabs_conversation_id = conversation_id
-            campaign_call.summary = summary
-            campaign_call.transcript = formatted_transcript
-            campaign_call.call_status = "completed"
-            db.commit()
-            check_and_update_campaign_status(campaign_call.campaign_id, db)
-            return {"status": "success"}
+        call_id = call_data.get("id", "")
+        raw_transcript = message.get("transcript", "")
+        vapi_summary = message.get("analysis", {}).get("summary", "")
+        ended_reason = call_data.get("endedReason", "")
 
-        # 2. Check ConversationLog (direct calls)
-        conv_log = None
-        if call_sid:
-            conv_log = db.query(ConversationLog).filter(ConversationLog.call_sid == call_sid).first()
-            
-        if not conv_log:
-            conv_log = db.query(ConversationLog).filter(
-                ConversationLog.conversation_summary == None
-            ).order_by(ConversationLog.created_at.desc()).first()
-            
-        if conv_log:
-            conv_log.elevenlabs_conversation_id = conversation_id
-            conv_log.conversation_summary = summary
-            conv_log.farmer_responses = transcript
-            conv_log.call_status = "completed"
-            db.commit()
-            
-        return {"status": "success"}
+        # Compute duration from timestamps
+        duration_secs = None
+        try:
+            from datetime import datetime as dt
+            started = call_data.get("startedAt", "")
+            ended_at = call_data.get("endedAt", "")
+            if started and ended_at:
+                fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
+                duration_secs = int((dt.strptime(ended_at, fmt) - dt.strptime(started, fmt)).total_seconds())
+        except Exception:
+            pass
+
+        print(f"[VAPI Webhook] event={event_type} call_id={call_id} ended_reason={ended_reason} duration={duration_secs}s")
+
+        if event_type in ["end-of-call-report", "call-ended"]:
+            from app.models.campaign import CampaignCall
+            from app.scheduler import check_and_update_campaign_status
+
+            if ended_reason in ["customer-busy"]:
+                final_status = "rejected"
+            elif ended_reason in ["customer-did-not-answer"]:
+                final_status = "no response"
+            else:
+                final_status = "completed"
+
+            # ── STEP 1: Save Telugu transcript IMMEDIATELY (zero delay) ──────
+            conv_log = db.query(ConversationLog).filter(ConversationLog.call_sid == call_id).first()
+            if conv_log:
+                conv_log.call_status = final_status
+                conv_log.farmer_responses = raw_transcript       # Telugu as-is
+                if duration_secs:
+                    conv_log.call_duration = duration_secs
+                if vapi_summary and not conv_log.conversation_summary:
+                    conv_log.conversation_summary = vapi_summary  # VAPI fallback
+                db.commit()
+
+            voice_call_record = db.query(VoiceCall).filter(VoiceCall.call_sid == call_id).first()
+            if voice_call_record:
+                voice_call_record.status = final_status.title()
+                db.commit()
+
+            campaign_call = db.query(CampaignCall).filter(CampaignCall.twilio_call_sid == call_id).first()
+            if campaign_call:
+                campaign_call.call_status = final_status
+                campaign_call.transcript = raw_transcript        # Telugu as-is
+                if duration_secs:
+                    campaign_call.duration = duration_secs
+                if vapi_summary and not campaign_call.summary:
+                    campaign_call.summary = vapi_summary
+                db.commit()
+                check_and_update_campaign_status(campaign_call.campaign_id, db)
+
+            print(f"[VAPI Webhook] ✓ Telugu transcript saved instantly for call_id={call_id}")
+
+            # ── STEP 2: Generate English summary in background (non-blocking) ─
+            if raw_transcript:
+                farmer_name = conv_log.farmer_name if conv_log else "Farmer"
+                cc_id = campaign_call.id if campaign_call else None
+
+                def generate_summary_bg(cid: str, transcript: str, fname: str, camp_call_id):
+                    inner_db = None
+                    try:
+                        from app.database import SessionLocal
+                        inner_db = SessionLocal()
+
+                        result = translate_and_summarize(transcript, fname)
+                        eng_summary = result.get("english_summary", "")
+                        if not eng_summary:
+                            return
+
+                        # Update summary only — transcript stays in Telugu
+                        cl = inner_db.query(ConversationLog).filter(ConversationLog.call_sid == cid).first()
+                        if cl:
+                            cl.conversation_summary = eng_summary
+                            inner_db.commit()
+
+                        if camp_call_id:
+                            cc = inner_db.query(CampaignCall).filter(CampaignCall.id == camp_call_id).first()
+                            if cc:
+                                cc.summary = eng_summary
+                                inner_db.commit()
+
+                        print(f"[VAPI Webhook] ✓ English summary saved for call_id={cid}")
+                    except Exception as ex:
+                        print(f"[VAPI Webhook] Summary generation error for {cid}: {ex}")
+                    finally:
+                        if inner_db:
+                            inner_db.close()
+
+                background_tasks.add_task(generate_summary_bg, call_id, raw_transcript, farmer_name, cc_id)
+
+        elif event_type == "status-update":
+            call_status = call_data.get("status", "")
+            conv_log = db.query(ConversationLog).filter(ConversationLog.call_sid == call_id).first()
+            if conv_log and call_status:
+                conv_log.call_status = call_status
+                db.commit()
+
+        return {"status": "ok"}
     except Exception as e:
-        print(f"ElevenLabs Webhook Error: {e}")
+        print(f"[VAPI Webhook Error]: {e}")
         return {"status": "error", "message": str(e)}
